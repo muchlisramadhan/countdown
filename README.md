@@ -2,6 +2,12 @@
 
 A static date-countdown calendar. It works offline in a browser and stores events on that device by default.
 
+## Install on Android
+
+The site is an installable Progressive Web App (PWA). Publish the repository on GitHub Pages or another HTTPS host, then open its URL in Chrome on Android. Open Chrome's menu and choose **Install app** or **Add to Home screen**. The app shell is cached for offline use after the first visit; events remain stored on the device.
+
+For local testing, serve the repository over `http://localhost` (for example, `python -m http.server 3000`) and open it in Chrome. Service workers require HTTPS on published sites; `localhost` is allowed for local development. Sync across devices requires an internet connection.
+
 ## Sync across devices
 
 The app can sync events privately between devices using Supabase and email sign-in. GitHub Pages does not provide a shared database, so configure a Supabase project once:

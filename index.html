@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Time Since Calendar</title>
+<meta name="theme-color" content="#f7f6f2">
+<meta name="description" content="A private, offline-friendly calendar for counting time since or until important dates.">
+<link rel="manifest" href="./manifest.webmanifest">
 <style>
 :root{--bg:#f7f6f2;--card:#fff;--text:#1d1d1b;--muted:#8a8a82;--accent:#1f7a5c;--accent-text:#fff;--line:#e4e2da;--future:#f0eee8;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -170,6 +173,7 @@ const SZ={s:["150px",".55rem"],m:["210px",".68rem"],l:["340px",".95rem"]};
 function applySize(){const k=SZ[store.size]?store.size:"m",z=SZ[k];$("grid").style.setProperty("--mw",z[0]);$("grid").style.setProperty("--fs",z[1]);$("size").value=k}
 $("size").onchange=e=>{store.size=e.target.value;save();applySize()};
 applySize();fill();render();tick();setInterval(tick,1000);
+if("serviceWorker" in navigator)navigator.serviceWorker.register("./sw.js").catch(error=>console.error("Service worker registration failed:",error));
 </script>
 </body>
 </html>
