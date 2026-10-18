@@ -42,11 +42,20 @@ label{display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)
 .d.today{outline:2px dashed var(--text);outline-offset:1px}
 .d.ms::after{content:"";position:absolute;top:2px;right:2px;width:4px;height:4px;border-radius:50%;background:#e8a33d}
 .legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:.75rem;margin:0 0 14px}
+.account{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 20px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);font-size:.85rem}
+.account input{min-width:180px}
+.account-status{color:var(--muted)}
 </style>
 </head>
 <body>
 <main>
 <h1>Time since the start</h1>
+<section class="account" aria-label="Account sync">
+<input type="email" id="email" placeholder="Email for sync" autocomplete="email">
+<button class="chip act" id="signin">Email me a sign-in link</button>
+<button class="chip" id="signout" hidden>Sign out</button>
+<span class="account-status" id="account-status" role="status" aria-live="polite">Sync across devices by signing in.</span>
+</section>
 <div class="tabs"><select id="sort" class="chip"><option value="" selected disabled>Sort events…</option><option value="name">Name A–Z</option><option value="newest">Start date: newest first</option><option value="oldest">Start date: oldest first</option><option value="ending">Until date: soonest first</option></select><select id="size" class="chip" title="View size"><option value="s">Small view</option><option value="m">Medium view</option><option value="l">Large view</option></select></div>
 <div class="tabs" id="tabs"></div>
 <div class="controls">
@@ -64,7 +73,12 @@ label{display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)
 <div class="legend" id="years"></div>
 <div class="grid" id="grid"></div>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+const SUPABASE_URL="";
+const SUPABASE_ANON_KEY="";
+const cloudConfigured=SUPABASE_URL&&SUPABASE_ANON_KEY;
+const cloud=cloudConfigured&&window.supabase?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
 const MN=["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAY=86400000;
 const HUES=[160,215,35,290,350,190];
@@ -72,7 +86,7 @@ const yc=(y,s)=>"hsl("+HUES[(y-s.getFullYear())%HUES.length]+" 50% 42%)";
 const $=id=>document.getElementById(id);
 let store={events:[],active:0};
 try{const s=JSON.parse(localStorage.getItem("tsc")||"null");if(s&&s.events)store=s;else if(s)store.events=[s]}catch(e){}
-let state,delArm=false;
+let state,delArm=false,cloudUser=null,syncTimer,syncGeneration=0,localRevision=0,syncReady=false;
 const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const parse=s=>{const[a,b,c]=s.split("-").map(Number);return new Date(a,b-1,c)};
 if(!store.events.length){const d=new Date();d.setDate(d.getDate()-400);store.events.push({name:"My event",start:iso(d),end:null})}
@@ -81,7 +95,21 @@ store.events.forEach(ev=>{if(!okDate(ev.start))ev.start=iso(new Date());if(ev.en
 if(store.active>=store.events.length)store.active=0;
 state=store.events[store.active];
 const fill=()=>{$("name").value=state.name;$("start").value=state.start;$("end").value=state.end||"";renderTabs()};
-function save(){try{localStorage.setItem("tsc",JSON.stringify(store))}catch(e){}}
+function save(){localRevision++;try{localStorage.setItem("tsc",JSON.stringify(store))}catch(e){$("account-status").textContent="Could not save on this device: "+e.message}if(cloudUser&&syncReady)queueCloudSave()}
+function setAccountStatus(message){$("account-status").textContent=message}
+function validCloudStore(value){return value&&Array.isArray(value.events)&&value.events.length>0&&Number.isInteger(value.active)&&value.active>=0&&value.active<value.events.length&&value.events.every(ev=>ev&&typeof ev.name==="string"&&okDate(ev.start)&&(!ev.end||okDate(ev.end)))}
+function queueCloudSave(){clearTimeout(syncTimer);syncTimer=setTimeout(saveCloud,600)}
+async function saveCloud(){const user=cloudUser;if(!cloud||!user||!syncReady)return;setAccountStatus("Syncing…");const{error}=await cloud.from("countdown_data").upsert({user_id:user.id,data:store,updated_at:new Date().toISOString()});if(cloudUser?.id!==user.id)return;if(error){setAccountStatus("Sync failed: "+error.message);return}setAccountStatus("Synced to your account.")}
+async function syncAccount(user){const generation=++syncGeneration;cloudUser=user;syncReady=false;$("email").hidden=!!user;$("signin").hidden=!!user;$("signout").hidden=!user;if(!user){setAccountStatus(cloudConfigured?"Signed out. Events are saved on this device.":"Add your Supabase project settings to enable sync.");return}
+const revision=localRevision;setAccountStatus("Loading your synced events…");const{data,error}=await cloud.from("countdown_data").select("data").eq("user_id",user.id).maybeSingle();if(generation!==syncGeneration)return;syncReady=true;if(error){setAccountStatus("Could not load synced events: "+error.message);return}
+if(data){if(!validCloudStore(data.data)){syncReady=false;setAccountStatus("Your synced data is invalid. Local events were kept and cloud sync is paused.");return}if(localRevision===revision){store=data.data;if(store.active>=store.events.length)store.active=0;state=store.events[store.active];try{localStorage.setItem("tsc",JSON.stringify(store))}catch(e){setAccountStatus("Loaded sync, but could not save on this device: "+e.message)}applySize();fill();render();tick();setAccountStatus("Synced to your account.")}else queueCloudSave()}
+else await saveCloud()}
+if(cloud){
+$("signin").onclick=async()=>{const email=$("email").value.trim();if(!email){setAccountStatus("Enter your email address first.");return}setAccountStatus("Sending sign-in link…");const{error}=await cloud.auth.signInWithOtp({email,options:{emailRedirectTo:location.href.split("#")[0]}});setAccountStatus(error?"Could not send sign-in link: "+error.message:"Check your email for a sign-in link.")}
+$("signout").onclick=async()=>{const{error}=await cloud.auth.signOut();if(error)setAccountStatus("Could not sign out: "+error.message)}
+cloud.auth.onAuthStateChange((event,session)=>{if(event==="SIGNED_OUT"||session)setTimeout(()=>syncAccount(session?.user||null),0)});
+cloud.auth.getSession().then(({data,error})=>{if(error)setAccountStatus("Could not check sign-in status: "+error.message);else syncAccount(data.session?.user||null)});
+}else{$("email").disabled=true;$("signin").disabled=true;setAccountStatus(cloudConfigured?"Sync library could not load. Check your connection and reload.":"Sync is not configured. See README for setup instructions.")}
 function breakdown(a,b){let y=b.getFullYear()-a.getFullYear(),m=b.getMonth()-a.getMonth(),d=b.getDate()-a.getDate();
 if(d<0){m--;d+=new Date(b.getFullYear(),b.getMonth(),0).getDate()}
 if(m<0){y--;m+=12}return{y,m,d}}
