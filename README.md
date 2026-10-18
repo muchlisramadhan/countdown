@@ -33,7 +33,9 @@ The app can sync events privately between devices using Supabase and email sign-
    ```
 
 3. In Supabase project settings, copy the Project URL and publishable key (or legacy `anon` key). In `index.html`, set `SUPABASE_URL` and `SUPABASE_ANON_KEY` near the start of the script to those values. These are public client settings; do not put a service-role key in the page.
-4. Set the Supabase Auth URL configuration to include your GitHub Pages site URL in the allowed redirect URLs. Set the site URL to that address as well.
+4. Set the Supabase Auth URL configuration to include your GitHub Pages site URL in the allowed redirect URLs. For local testing, also allow `http://localhost:3000/**`. Set the site URL to your GitHub Pages address.
 5. Publish the updated `index.html`. On each device, open the same site and sign in with the same email address using the emailed link.
+
+Sign-in links expire and can only be used once. Request and open the latest link in the same browser and device. For cross-device use, open the published GitHub Pages site rather than `localhost`; localhost is only reachable on the device running the local server.
 
 When an account has no synced data yet, the current device's events are uploaded. When data already exists for the account, that synced copy is loaded on the device. Changes are automatically saved locally and synced after a short delay.

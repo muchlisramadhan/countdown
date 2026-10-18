@@ -87,6 +87,8 @@ const $=id=>document.getElementById(id);
 let store={events:[],active:0};
 try{const s=JSON.parse(localStorage.getItem("tsc")||"null");if(s&&s.events)store=s;else if(s)store.events=[s]}catch(e){}
 let state,delArm=false,cloudUser=null,syncTimer,syncGeneration=0,localRevision=0,syncReady=false;
+const authCallbackError=new URLSearchParams(location.hash.slice(1)).get("error_code");
+if(authCallbackError)history.replaceState(null,"",location.pathname+location.search);
 const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const parse=s=>{const[a,b,c]=s.split("-").map(Number);return new Date(a,b-1,c)};
 if(!store.events.length){const d=new Date();d.setDate(d.getDate()-400);store.events.push({name:"My event",start:iso(d),end:null})}
@@ -107,8 +109,8 @@ else await saveCloud()}
 if(cloud){
 $("signin").onclick=async()=>{const email=$("email").value.trim();if(!email){setAccountStatus("Enter your email address first.");return}setAccountStatus("Sending sign-in link…");const{error}=await cloud.auth.signInWithOtp({email,options:{emailRedirectTo:location.href.split("#")[0]}});setAccountStatus(error?"Could not send sign-in link: "+error.message:"Check your email for a sign-in link.")}
 $("signout").onclick=async()=>{const{error}=await cloud.auth.signOut();if(error)setAccountStatus("Could not sign out: "+error.message)}
-cloud.auth.onAuthStateChange((event,session)=>{if(event==="SIGNED_OUT"||session)setTimeout(()=>syncAccount(session?.user||null),0)});
-cloud.auth.getSession().then(({data,error})=>{if(error)setAccountStatus("Could not check sign-in status: "+error.message);else syncAccount(data.session?.user||null)});
+cloud.auth.onAuthStateChange((event,session)=>{if((event==="SIGNED_OUT"&&!authCallbackError)||session)setTimeout(()=>syncAccount(session?.user||null),0)});
+cloud.auth.getSession().then(({data,error})=>{if(error)setAccountStatus("Could not check sign-in status: "+error.message);else{syncAccount(data.session?.user||null);if(authCallbackError)setAccountStatus(authCallbackError==="otp_expired"?"That sign-in link expired or was already used. Request a new one and open the latest email on the same device and browser.":"Sign-in failed ("+authCallbackError+"). Request a new email link and try again.")}});
 }else{$("email").disabled=true;$("signin").disabled=true;setAccountStatus(cloudConfigured?"Sync library could not load. Check your connection and reload.":"Sync is not configured. See README for setup instructions.")}
 function breakdown(a,b){let y=b.getFullYear()-a.getFullYear(),m=b.getMonth()-a.getMonth(),d=b.getDate()-a.getDate();
 if(d<0){m--;d+=new Date(b.getFullYear(),b.getMonth(),0).getDate()}
