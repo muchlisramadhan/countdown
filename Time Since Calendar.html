@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Time Since Calendar</title>
+<style>
+:root{--bg:#f7f6f2;--card:#fff;--text:#1d1d1b;--muted:#8a8a82;--accent:#1f7a5c;--accent-text:#fff;--line:#e4e2da;--future:#f0eee8;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161715;--card:#1f201e;--text:#ecebe6;--muted:#8d8d85;--accent:#4cc19a;--accent-text:#0e1a15;--line:#2e2f2c;--future:#252623}}
+:root[data-theme="dark"]{--bg:#161715;--card:#1f201e;--text:#ecebe6;--muted:#8d8d85;--accent:#4cc19a;--accent-text:#0e1a15;--line:#2e2f2c;--future:#252623}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman',serif}
+main{max-width:1000px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:1.1rem;font-weight:normal;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 16px}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+input{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text)}
+input[type=text]{flex:1;min-width:160px}
+label{display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chip{font:inherit;font-size:.8rem;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--text);cursor:pointer}
+.chip.act{background:var(--text);color:var(--bg);border-color:var(--text)}
+.chip.add{border-style:dashed;color:var(--muted)}
+.chip.del{color:#c0392b;border-color:transparent;background:transparent}
+.chip:disabled{opacity:.35;cursor:default}
+.hero{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:24px}
+.hero .big{font-size:clamp(1.8rem,6vw,3rem);line-height:1.1}
+.hero .sub{color:var(--muted);margin-top:8px;font-family:ui-monospace,Menlo,monospace;font-size:.85rem}
+.stats{display:flex;gap:24px;flex-wrap:wrap;margin-top:14px}
+.stats div{font-size:.8rem;color:var(--muted)}.stats b{display:block;font-size:1.2rem;color:var(--text);font-weight:normal}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--mw,210px),1fr));gap:14px}
+.month{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.month h3{margin:0 0 8px;font-size:.85rem;font-weight:normal;display:flex;justify-content:space-between}
+.month h3 span{color:var(--muted)}
+.days{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.dow{font-size:.6rem;color:var(--muted);text-align:center}
+.d{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:var(--fs,.68rem);border-radius:5px;background:var(--future);color:var(--muted);position:relative;font-family:ui-monospace,Menlo,monospace}
+.d.pre{background:transparent;color:var(--line)}
+.d.on{background:var(--accent);color:var(--accent-text)}
+.d.cd{background:transparent;border:1px dashed var(--accent);color:var(--text)}
+.d.start{outline:2px solid var(--text);outline-offset:1px}
+.d.today{outline:2px dashed var(--text);outline-offset:1px}
+.d.ms::after{content:"";position:absolute;top:2px;right:2px;width:4px;height:4px;border-radius:50%;background:#e8a33d}
+.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:.75rem;margin:0 0 14px}
+</style>
+</head>
+<body>
+<main>
+<h1>Time since the start</h1>
+<div class="tabs"><select id="sort" class="chip"><option value="" selected disabled>Sort events…</option><option value="name">Name A–Z</option><option value="newest">Start date: newest first</option><option value="oldest">Start date: oldest first</option><option value="ending">Until date: soonest first</option></select><select id="size" class="chip" title="View size"><option value="s">Small view</option><option value="m">Medium view</option><option value="l">Large view</option></select></div>
+<div class="tabs" id="tabs"></div>
+<div class="controls">
+<input type="text" id="name" placeholder="Event name" maxlength="60">
+<label>Start <input type="date" id="start" min="1900-01-01" max="2100-12-31"></label>
+<label>Until <input type="date" id="end" min="1900-01-01" max="2100-12-31" title="Optional: stop counting at this date (inclusive). Clear to count up to today."></label>
+<button class="chip act" id="gen">Generate</button>
+</div>
+<section class="hero">
+<div class="big" id="title"></div>
+<div class="stats" id="stats"></div>
+<div class="sub" id="live"></div>
+</section>
+<div class="legend"><span>■ day elapsed</span><span>⬚ days remaining</span><span>▢ start day</span><span>┅ today</span><span>● every 100 days</span></div>
+<div class="legend" id="years"></div>
+<div class="grid" id="grid"></div>
+</main>
+<script>
+const MN=["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DAY=86400000;
+const HUES=[160,215,35,290,350,190];
+const yc=(y,s)=>"hsl("+HUES[(y-s.getFullYear())%HUES.length]+" 50% 42%)";
+const $=id=>document.getElementById(id);
+let store={events:[],active:0};
+try{const s=JSON.parse(localStorage.getItem("tsc")||"null");if(s&&s.events)store=s;else if(s)store.events=[s]}catch(e){}
+let state,delArm=false;
+const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const parse=s=>{const[a,b,c]=s.split("-").map(Number);return new Date(a,b-1,c)};
+if(!store.events.length){const d=new Date();d.setDate(d.getDate()-400);store.events.push({name:"My event",start:iso(d),end:null})}
+const okDate=v=>{if(!v)return false;const y=parse(v).getFullYear();return y>=1900&&y<=2100};
+store.events.forEach(ev=>{if(!okDate(ev.start))ev.start=iso(new Date());if(ev.end&&!okDate(ev.end))ev.end=null});
+if(store.active>=store.events.length)store.active=0;
+state=store.events[store.active];
+const fill=()=>{$("name").value=state.name;$("start").value=state.start;$("end").value=state.end||"";renderTabs()};
+function save(){try{localStorage.setItem("tsc",JSON.stringify(store))}catch(e){}}
+function breakdown(a,b){let y=b.getFullYear()-a.getFullYear(),m=b.getMonth()-a.getMonth(),d=b.getDate()-a.getDate();
+if(d<0){m--;d+=new Date(b.getFullYear(),b.getMonth(),0).getDate()}
+if(m<0){y--;m+=12}return{y,m,d}}
+function render(){
+const start=parse(state.start),now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+const endD=(state.end&&parse(state.end)>=start)?parse(state.end):null;
+const cap=(endD&&endD<today)?endD:today;
+const elapsed=Math.round((cap-start)/DAY);
+$("title").textContent=(state.name||"My event")+(endD&&endD<today?" (ended)":"");
+if(elapsed<0){const b=breakdown(today,start);$("stats").innerHTML=`<div>Countdown<b>${b.y}y ${b.m}m ${b.d}d</b></div><div>Days left<b>${-elapsed}</b></div><div>Weeks<b>${(-elapsed/7).toFixed(1)}</b></div>`}
+else{const b=breakdown(start,cap);
+$("stats").innerHTML=`<div>Elapsed<b>${b.y}y ${b.m}m ${b.d}d</b></div><div>Days<b>${elapsed+1}</b></div><div>Weeks<b>${(elapsed/7).toFixed(1)}</b></div><div>Months<b>${(b.y*12+b.m+b.d/30).toFixed(1)}</b></div>`+(endD&&endD>today?(()=>{const r=breakdown(today,endD);return `<div>Time left<b>${r.y}y ${r.m}m ${r.d}d</b></div><div>Days left<b>${Math.round((endD-today)/DAY)}</b></div>`})():"")}
+// range: start month to the later of today / start+13 months
+let end=new Date(start.getFullYear(),start.getMonth()+13,1);
+const tm=new Date(today.getFullYear(),today.getMonth(),1);
+if(tm>=end)end=new Date(tm.getFullYear(),tm.getMonth()+1,1);
+if(endD)end=new Date(endD.getFullYear(),endD.getMonth()+1,1);
+let html="";
+for(let c=new Date(Math.max(new Date(start.getFullYear(),start.getMonth(),1),new Date(end.getFullYear(),end.getMonth()-240,1)));c<end;c=new Date(c.getFullYear(),c.getMonth()+1,1)){
+const dim=new Date(c.getFullYear(),c.getMonth()+1,0).getDate(),off=c.getDay();
+let on=0,cells="";
+for(const w of "SMTWTFS")cells+=`<div class="dow">${w}</div>`;
+for(let i=0;i<off;i++)cells+='<div class="d pre"></div>';
+for(let n=1;n<=dim;n++){
+const dt=new Date(c.getFullYear(),c.getMonth(),n),k=Math.round((dt-start)/DAY);
+let cls="d",sty="";if(k>=0&&dt<=cap){cls+=" on";on++;sty=' style="background:'+yc(dt.getFullYear(),start)+';color:#fff"'}else if((k<0&&dt>today)||(endD&&dt>today&&dt<=endD))cls+=" cd";
+if(k===0)cls+=" start";if(+dt===+today)cls+=" today";
+if(k>0&&k%100===0)cls+=" ms";
+cells+=`<div class="${cls}"${sty} title="${k>=0?"Day "+(k+1):"Before start"}">${n}</div>`}
+html+=`<div class="month"><h3>${MN[c.getMonth()]} ${c.getFullYear()}<span>${on?on+"d":""}</span></h3><div class="days">${cells}</div></div>`}
+$("grid").innerHTML=html;
+let lg="";for(let y=Math.max(start.getFullYear(),new Date(end-1).getFullYear()-20);y<=new Date(end-1).getFullYear();y++)lg+='<span><b style="color:'+yc(y,start)+'">■</b> '+y+'</span>';
+$("years").innerHTML=lg}
+function tick(){const s=parse(state.start),e=(state.end&&parse(state.end)>=s)?parse(state.end).getTime()+DAY:Infinity,ms=Math.min(Date.now(),e)-s.getTime();
+if(window.wasCd&&ms>=0)render();window.wasCd=ms<0;
+if(ms<0){const r=-ms,d=Math.floor(r/DAY),h=Math.floor(r/3600000)%24,m=Math.floor(r/60000)%60,sec=Math.floor(r/1000)%60;$("live").textContent=d+" d · "+h+" h · "+m+" min · "+sec+" s until start";return}
+const h=Math.floor(ms/3600000),m=Math.floor(ms/60000)%60,sec=Math.floor(ms/1000)%60;
+let t=h.toLocaleString("en-US")+" hours · "+m+" min · "+sec+" s";if(e!==Infinity&&e>Date.now()){const r=e-Date.now(),d=Math.floor(r/DAY),rh=Math.floor(r/3600000)%24,rm=Math.floor(r/60000)%60,rs=Math.floor(r/1000)%60;t+="  |  left: "+d+" d "+rh+" h "+rm+" m "+rs+" s"}$("live").textContent=t;}
+$("name").oninput=e=>{state.name=e.target.value;save();renderTabs();$("title").textContent=state.name||"My event"};
+$("gen").onclick=()=>{const s=$("start").value,v=$("end").value;if(!okDate(s)||(v&&!okDate(v))){fill();return}state.start=s;state.end=v||null;save();render();tick()};
+
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function renderTabs(){
+$("tabs").innerHTML=store.events.map((e,i)=>'<button class="chip'+(i===store.active?' act':'')+'" data-i="'+i+'">'+esc(e.name||"Untitled")+'</button>').join("")+'<button class="chip add" id="add">+ New event</button>'+(store.events.length>1?'<button class="chip" id="left" title="Move left"'+(store.active===0?' disabled':'')+'>◀</button><button class="chip" id="right" title="Move right"'+(store.active===store.events.length-1?' disabled':'')+'>▶</button>':"")+(store.events.length>1?'<button class="chip del" id="del">'+(delArm?'Confirm delete?':'Delete')+'</button>':"")}
+$("tabs").onclick=e=>{const b=e.target.closest("button");if(!b)return;let isNew=false;
+if(b.id==="del"){if(!delArm){delArm=true;renderTabs();return}store.events.splice(store.active,1);store.active=Math.max(0,store.active-1)}
+else if(b.id==="left"||b.id==="right"){const j=store.active+(b.id==="left"?-1:1);if(j<0||j>=store.events.length)return;[store.events[store.active],store.events[j]]=[store.events[j],store.events[store.active]];store.active=j}
+else if(b.id==="add"){store.events.push({name:"New event",start:iso(new Date()),end:null});store.active=store.events.length-1;isNew=true}
+else store.active=+b.dataset.i;
+delArm=false;state=store.events[store.active];save();fill();render();tick();
+if(isNew){$("name").focus();$("name").select()}};
+$("sort").onchange=e=>{const v=e.target.value,cur=state;const cmp={name:(a,b)=>(a.name||"").localeCompare(b.name||""),newest:(a,b)=>b.start.localeCompare(a.start),oldest:(a,b)=>a.start.localeCompare(b.start),ending:(a,b)=>(a.end||"9999").localeCompare(b.end||"9999")}[v];
+if(cmp){store.events.sort(cmp);store.active=store.events.indexOf(cur);delArm=false;save();renderTabs()}
+e.target.value=""};
+const SZ={s:["150px",".55rem"],m:["210px",".68rem"],l:["340px",".95rem"]};
+function applySize(){const k=SZ[store.size]?store.size:"m",z=SZ[k];$("grid").style.setProperty("--mw",z[0]);$("grid").style.setProperty("--fs",z[1]);$("size").value=k}
+$("size").onchange=e=>{store.size=e.target.value;save();applySize()};
+applySize();fill();render();tick();setInterval(tick,1000);
+</script>
+</body>
+</html>
